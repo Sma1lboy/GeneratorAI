@@ -30,12 +30,41 @@ type Menu {
 }
 
 type Mutation {
+  addPackageToProject(packageContent: String!, projectId: String!): ProjectPackages!
+  deleteProject(projectId: String!): Boolean!
   login(input: LoginUserInput!): LoginResponse!
   registerUser(input: RegisterUserInput!): User!
+  removePackageFromProject(packageId: String!, projectId: String!): Boolean!
+  updateProjectPath(newPath: String!, projectId: String!): Boolean!
+  upsertProject(upsertProjectInput: UpsertProjectInput!): Projects!
+}
+
+type ProjectPackages {
+  content: String!
+  created_at: Date!
+  id: ID!
+  is_active: Boolean!
+  is_deleted: Boolean!
+  last_updated: Date!
+  project_id: ID!
+}
+
+type Projects {
+  created_at: Date!
+  id: ID!
+  is_active: Boolean!
+  is_deleted: Boolean!
+  last_updated: Date!
+  path: String!
+  projectPackages: [ProjectPackages!]
+  project_name: String!
+  user_id: ID!
 }
 
 type Query {
   checkToken(input: CheckTokenInput!): Boolean!
+  getProjectDetails(projectId: String!): Projects!
+  getUserProjects(userId: String!): [Projects!]!
   logout: Boolean!
 }
 
@@ -43,6 +72,13 @@ input RegisterUserInput {
   email: String!
   password: String!
   username: String!
+}
+
+input UpsertProjectInput {
+  path: String!
+  project_id: ID
+  project_name: String!
+  user_id: ID!
 }
 
 type User {
