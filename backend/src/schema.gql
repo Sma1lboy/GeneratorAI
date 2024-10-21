@@ -2,6 +2,29 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+type ChatCompletionChoiceType {
+  delta: ChatCompletionDeltaType!
+  finish_reason: String
+  index: Float!
+}
+
+type ChatCompletionChunkType {
+  choices: [ChatCompletionChoiceType!]!
+  created: Float!
+  id: String!
+  model: String!
+  object: String!
+  system_fingerprint: String
+}
+
+type ChatCompletionDeltaType {
+  content: String
+}
+
+input ChatInputType {
+  message: String!
+}
+
 input CheckTokenInput {
   token: String!
 }
@@ -43,6 +66,10 @@ input RegisterUserInput {
   email: String!
   password: String!
   username: String!
+}
+
+type Subscription {
+  chatStream(input: ChatInputType!): ChatCompletionChunkType
 }
 
 type User {

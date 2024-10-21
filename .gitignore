@@ -1,2 +1,5 @@
-node_modules/
-.turbo/
+*/**.turbo/
+*/**/node_modules
+*/**/dist
+# temp model
+*/**/models

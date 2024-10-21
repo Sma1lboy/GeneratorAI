@@ -1,0 +1,32 @@
+{
+  "name": "llm-server",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "scripts": {
+    "start": "node --experimental-specifier-resolution=node --loader ts-node/esm src/main.ts",
+    "start:dev": "nodemon --watch 'src/**/*.ts' --exec 'node --experimental-specifier-resolution=node --loader ts-node/esm' src/main.ts",
+    "build": "tsc",
+    "serve": "node --experimental-specifier-resolution=node dist/main.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@nestjs/common": "^10.4.5",
+    "express": "^4.21.1",
+    "node-fetch": "^3.3.2",
+    "node-llama-cpp": "^3.1.1",
+    "nodemon": "^3.1.7"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.13",
+    "@types/node": "^16.11.12",
+    "openai": "^4.68.1",
+    "ts-loader": "^9.5.1",
+    "ts-node": "^10.4.0",
+    "typescript": "^5.6.3",
+    "webpack": "^5.95.0",
+    "webpack-cli": "^5.1.4"
+  }
+}
