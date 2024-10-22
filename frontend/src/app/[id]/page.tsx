@@ -2,169 +2,268 @@
 
 import { ChatLayout } from "@/components/chat/chat-layout";
 import { getSelectedModel } from "@/lib/model-helper";
-import { ChatOllama } from "@langchain/community/chat_models/ollama";
-import { AIMessage, HumanMessage } from "@langchain/core/messages";
-import { BytesOutputParser } from "@langchain/core/output_parsers";
-import { Attachment, ChatRequestOptions } from "ai";
-import { Message, useChat } from "ai/react";
-import React, { useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { v4 as uuidv4 } from "uuid";
 import useChatStore from "../hooks/useChatStore";
+import { Message } from "@/components/types";
+
+interface ChatStreamResponse {
+  chatStream: {
+    choices: Array<{
+      delta: {
+        content?: string | null;
+      };
+      finish_reason?: string | null;
+      index: number;
+    }>;
+    created: number;
+    id: string;
+    model: string;
+    object: string;
+  };
+}
+
+interface Attachment {
+  contentType: string;
+  url: string;
+}
 
 export default function Page({ params }: { params: { id: string } }) {
-  const {
-    messages,
-    input,
-    handleInputChange,
-    handleSubmit,
-    isLoading,
-    error,
-    stop,
-    setMessages,
-    setInput,
-  } = useChat({
-    onResponse: (response) => {
-      if (response) {
-        setLoadingSubmit(false);
-      }
-    },
-    onError: (error) => {
-      setLoadingSubmit(false);
-      toast.error("An error occurred. Please try again.");
-    },
-  });
-  const [chatId, setChatId] = React.useState<string>("");
-  const [selectedModel, setSelectedModel] = React.useState<string>(
+  // 状态管理
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const [selectedModel, setSelectedModel] = useState<string>(
     getSelectedModel()
   );
-  const [ollama, setOllama] = React.useState<ChatOllama>();
-  const env = process.env.NODE_ENV;
-  const [loadingSubmit, setLoadingSubmit] = React.useState(false);
-  const formRef = React.useRef<HTMLFormElement>(null);
+  const [loadingSubmit, setLoadingSubmit] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const ws = useRef<WebSocket | null>(null);
   const base64Images = useChatStore((state) => state.base64Images);
   const setBase64Images = useChatStore((state) => state.setBase64Images);
+  const [currentAssistantMessage, setCurrentAssistantMessage] = useState("");
 
+  // 初始化 WebSocket 连接
   useEffect(() => {
-    if (env === "production") {
-      const newOllama = new ChatOllama({
-        baseUrl: process.env.NEXT_PUBLIC_OLLAMA_URL || "http://localhost:11434",
-        model: selectedModel,
-      });
-      setOllama(newOllama);
-    }
-  }, [selectedModel]);
-
-  React.useEffect(() => {
-    if (params.id) {
-      const item = localStorage.getItem(`chat_${params.id}`);
-      if (item) {
-        setMessages(JSON.parse(item));
+    initWebSocket();
+    return () => {
+      if (ws.current) {
+        ws.current.close();
       }
-    }
+    };
   }, []);
 
-  const addMessage = (Message: any) => {
-    messages.push(Message);
-    window.dispatchEvent(new Event("storage"));
-    setMessages([...messages]);
+  // 加载历史消息
+  useEffect(() => {
+    if (params.id) {
+      loadChatHistory(params.id);
+    }
+  }, [params.id]);
+
+  // 保存消息到本地存储
+  useEffect(() => {
+    if (!isLoading && !error && messages.length > 0) {
+      localStorage.setItem(`chat_${params.id}`, JSON.stringify(messages));
+      window.dispatchEvent(new Event("storage"));
+    }
+  }, [messages, isLoading, error, params.id]);
+
+  const initWebSocket = () => {
+    ws.current = new WebSocket("ws://localhost:8080/graphql");
+
+    ws.current.onopen = () => {
+      console.log("WebSocket connected");
+    };
+
+    ws.current.onerror = (error) => {
+      console.error("WebSocket error:", error);
+      toast.error("Connection error. Retrying...");
+      setTimeout(initWebSocket, 3000);
+    };
+
+    ws.current.onclose = () => {
+      console.log("WebSocket closed");
+      setTimeout(initWebSocket, 3000);
+    };
   };
 
-  // Function to handle chatting with Ollama in production (client side)
-  const handleSubmitProduction = async (
-    e: React.FormEvent<HTMLFormElement>
-  ) => {
-    e.preventDefault();
+  const loadChatHistory = async (chatId: string) => {
+    try {
+      const response = await fetch("http://localhost:8080/graphql", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query: `
+            query GetChatHistory($chatId: ID!) {
+              getChatHistory(chatId: $chatId) {
+                id
+                role
+                content
+                createdAt
+              }
+            }
+          `,
+          variables: {
+            chatId,
+          },
+        }),
+      });
 
-    addMessage({ role: "user", content: input, id: chatId });
-    setInput("");
+      const data = await response.json();
+      if (data.errors) {
+        throw new Error(data.errors[0].message);
+      }
 
-    if (ollama) {
-      try {
-        const parser = new BytesOutputParser();
-
-        const stream = await ollama
-          .pipe(parser)
-          .stream(
-            (messages as Message[]).map((m) =>
-              m.role == "user"
-                ? new HumanMessage(m.content)
-                : new AIMessage(m.content)
-            )
-          );
-
-        const decoder = new TextDecoder();
-
-        let responseMessage = "";
-        for await (const chunk of stream) {
-          const decodedChunk = decoder.decode(chunk);
-          responseMessage += decodedChunk;
-          setLoadingSubmit(false);
-          setMessages([
-            ...messages,
-            { role: "assistant", content: responseMessage, id: chatId },
-          ]);
-        }
-        addMessage({ role: "assistant", content: responseMessage, id: chatId });
-        setMessages([...messages]);
-
-        localStorage.setItem(`chat_${params.id}`, JSON.stringify(messages));
-        // Trigger the storage event to update the sidebar component
-        window.dispatchEvent(new Event("storage"));
-      } catch (error) {
-        toast.error("An error occurred. Please try again.");
-        setLoadingSubmit(false);
+      const savedMessages = data.data.getChatHistory || [];
+      setMessages(savedMessages);
+    } catch (error) {
+      console.error("Error loading chat history:", error);
+      // 尝试从本地存储加载
+      const localMessages = localStorage.getItem(`chat_${chatId}`);
+      if (localMessages) {
+        setMessages(JSON.parse(localMessages));
       }
     }
   };
 
-  const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setLoadingSubmit(true);
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+  };
 
-    setMessages([...messages]);
-
-    const attachments: Attachment[] = base64Images
-    ? base64Images.map((image) => ({
-        contentType: 'image/base64', // Content type for base64 images
-        url: image, // The base64 image data
-      }))
-    : [];
-
-    // Prepare the options object with additional body data, to pass the model.
-    const requestOptions: ChatRequestOptions = {
-      options: {
-        body: {
-          selectedModel: selectedModel,
-        },
-      },
-      ...(base64Images && {
-        data: {
-          images: base64Images,
-        },
-        experimental_attachments: attachments
-      }),
-    };
-
-    if (env === "production" && selectedModel !== "REST API") {
-      handleSubmitProduction(e);
-      setBase64Images(null)
-    } else {
-      // use the /api/chat route
-      // Call the handleSubmit function with the options
-      handleSubmit(e, requestOptions);
-      setBase64Images(null)
+  const stop = () => {
+    if (ws.current?.readyState === WebSocket.OPEN) {
+      ws.current.send(
+        JSON.stringify({
+          type: "stop",
+          id: params.id,
+        })
+      );
     }
   };
 
-  // When starting a new chat, append the messages to the local storage
-  React.useEffect(() => {
-    if (!isLoading && !error && messages.length > 0) {
-      localStorage.setItem(`chat_${params.id}`, JSON.stringify(messages));
-      // Trigger the storage event to update the sidebar component
-      window.dispatchEvent(new Event("storage"));
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (
+      !input.trim() ||
+      !ws.current ||
+      ws.current.readyState !== WebSocket.OPEN
+    ) {
+      if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
+        toast.error("Connection lost. Reconnecting...");
+        initWebSocket();
+      }
+      return;
     }
-  }, [messages, chatId, isLoading, error]);
+
+    setLoadingSubmit(true);
+
+    const newMessage: Message = {
+      id: params.id,
+      role: "user",
+      content: input,
+      createdAt: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, newMessage]);
+    setInput("");
+    setCurrentAssistantMessage("");
+
+    const attachments = base64Images
+      ? base64Images.map((image) => ({
+          contentType: "image/base64",
+          url: image,
+        }))
+      : [];
+
+    // 发送 GraphQL subscription 请求
+    const subscriptionMsg = {
+      type: "start",
+      id: Date.now().toString(),
+      payload: {
+        query: `
+          subscription ChatStream($input: ChatInput!) {
+            chatStream(input: $input) {
+              choices {
+                delta {
+                  content
+                }
+                finish_reason
+                index
+              }
+              created
+              id
+              model
+              object
+            }
+          }
+        `,
+        variables: {
+          input: {
+            message: input,
+            chatId: params.id,
+            model: selectedModel,
+            attachments,
+          },
+        },
+      },
+    };
+
+    try {
+      ws.current.onmessage = (event) => {
+        const response = JSON.parse(event.data);
+
+        if (response.type === "data" && response.payload.data) {
+          const chunk = response.payload.data.chatStream;
+          const content = chunk.choices[0]?.delta?.content;
+
+          if (content) {
+            setCurrentAssistantMessage((prev) => prev + content);
+            setMessages((prev) => {
+              const lastMsg = prev[prev.length - 1];
+              if (lastMsg?.role === "assistant") {
+                return [
+                  ...prev.slice(0, -1),
+                  {
+                    ...lastMsg,
+                    content: lastMsg.content + content,
+                  },
+                ];
+              } else {
+                return [
+                  ...prev,
+                  {
+                    id: chunk.id,
+                    role: "assistant",
+                    content,
+                    createdAt: new Date(chunk.created * 1000).toISOString(),
+                  },
+                ];
+              }
+            });
+          }
+
+          if (chunk.choices[0]?.finish_reason === "stop") {
+            setLoadingSubmit(false);
+            setCurrentAssistantMessage("");
+
+            // 保存消息
+            localStorage.setItem(`chat_${params.id}`, JSON.stringify(messages));
+            window.dispatchEvent(new Event("storage"));
+          }
+        }
+      };
+
+      ws.current.send(JSON.stringify(subscriptionMsg));
+      setBase64Images(null);
+    } catch (error) {
+      console.error("Error:", error);
+      toast.error("Failed to send message");
+      setLoadingSubmit(false);
+    }
+  };
 
   return (
     <main className="flex h-[calc(100dvh)] flex-col items-center">

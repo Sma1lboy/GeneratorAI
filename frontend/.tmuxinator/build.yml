@@ -1,0 +1,11 @@
+name: frontend-dev
+root: ./
+
+windows:
+  - editor:
+      layout: even-horizontal
+      panes:
+        - next:
+            - pnpm dev
+        - codegen:
+            - pnpm generate:watch

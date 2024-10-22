@@ -1,0 +1,24 @@
+schema: "./schema.gql"
+generates:
+  src/graphql/type.ts:
+    plugins:
+      - "typescript"
+      - "typescript-operations"
+      - "typescript-resolvers"
+    config:
+      useIndexSignature: true
+      enumsAsTypes: true
+      constEnums: true
+      skipTypename: false
+      dedupeOperationSuffix: true
+      nonOptionalTypename: true
+      preResolveTypes: true
+      namingConvention:
+        enumValues: keep
+      scalars:
+        Date: Date
+watch:
+  - "./src/**/*.tsx"
+  - "./src/**/*.ts"
+  - "./src/**/*.graphql"
+  - "./schema.gql"

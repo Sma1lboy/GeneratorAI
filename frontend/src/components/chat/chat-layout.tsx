@@ -1,6 +1,5 @@
 "use client";
-
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, Dispatch, SetStateAction } from "react";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -8,20 +7,27 @@ import {
 } from "@/components/ui/resizable";
 import { cn } from "@/lib/utils";
 import { Sidebar } from "../sidebar";
-import { Message, useChat } from "ai/react";
-import Chat, { ChatProps } from "./chat";
-import ChatList from "./chat-list";
-import { HamburgerMenuIcon } from "@radix-ui/react-icons";
+import Chat from "./chat";
+import { Message } from "../types";
 
 interface ChatLayoutProps {
-  defaultLayout: number[] | undefined;
+  defaultLayout?: number[];
   defaultCollapsed?: boolean;
   navCollapsedSize: number;
   chatId: string;
-  setMessages: (messages: Message[]) => void;
+  messages: Message[];
+  input: string;
+  handleInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  handleSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+  isLoading: boolean;
+  loadingSubmit: boolean;
+  error: Error | null;
+  stop: () => void;
+  setSelectedModel: Dispatch<SetStateAction<string>>;
+  formRef: React.RefObject<HTMLFormElement>;
+  setMessages: Dispatch<SetStateAction<Message[]>>;
+  setInput: Dispatch<SetStateAction<string>>;
 }
-
-type MergedProps = ChatLayoutProps & ChatProps;
 
 export function ChatLayout({
   defaultLayout = [30, 160],
@@ -40,22 +46,16 @@ export function ChatLayout({
   formRef,
   setMessages,
   setInput,
-}: MergedProps) {
-  const [isCollapsed, setIsCollapsed] = React.useState(defaultCollapsed);
+}: ChatLayoutProps) {
+  const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     const checkScreenWidth = () => {
       setIsMobile(window.innerWidth <= 1023);
     };
-
-    // Initial check
     checkScreenWidth();
-
-    // Event listener for screen width changes
     window.addEventListener("resize", checkScreenWidth);
-
-    // Cleanup the event listener on component unmount
     return () => {
       window.removeEventListener("resize", checkScreenWidth);
     };

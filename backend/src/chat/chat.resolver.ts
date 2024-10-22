@@ -1,4 +1,11 @@
-import { Resolver, Subscription, Args } from '@nestjs/graphql';
+import {
+  Resolver,
+  Subscription,
+  Args,
+  Field,
+  ObjectType,
+  Query,
+} from '@nestjs/graphql';
 import { ChatCompletionChunk, ChatInput } from './chat.model';
 import { ChatProxyService } from './chat.service';
 
@@ -24,4 +31,16 @@ export class ChatResolver {
       throw new Error('Chat stream failed');
     }
   }
+
+  @Query(() => ModelTags)
+  async modelTags() {
+    //TODO: model tags api
+    return { tags: ['gpt-3', 'gpt-4', 'davinci'] };
+  }
+}
+
+@ObjectType('ModelTags')
+export class ModelTags {
+  @Field(() => [String])
+  tags: string[];
 }

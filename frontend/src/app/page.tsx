@@ -1,203 +1,218 @@
 "use client";
 
+import React, { useEffect, useRef, useState } from "react";
 import { ChatLayout } from "@/components/chat/chat-layout";
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
-  DialogDescription,
+  DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogContent,
+  DialogDescription,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import UsernameForm from "@/components/username-form";
 import { getSelectedModel } from "@/lib/model-helper";
-import { ChatOllama } from "@langchain/community/chat_models/ollama";
-import { AIMessage, HumanMessage } from "@langchain/core/messages";
-import { BytesOutputParser } from "@langchain/core/output_parsers";
-import { Attachment, ChatRequestOptions } from "ai";
-import { Message, useChat } from "ai/react";
-import React, { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
 import useChatStore from "./hooks/useChatStore";
+import { Message } from "@/components/types";
 
 export default function Home() {
-  const {
-    messages,
-    input,
-    handleInputChange,
-    handleSubmit,
-    isLoading,
-    error,
-    data,
-    stop,
-    setMessages,
-    setInput,
-  } = useChat({
-    onResponse: (response) => {
-      if (response) {
-        setLoadingSubmit(false);
-      }
-    },
-    onError: (error) => {
-      setLoadingSubmit(false);
-      toast.error("An error occurred. Please try again.");
-    },
-  });
-  const [chatId, setChatId] = React.useState<string>("");
-  const [selectedModel, setSelectedModel] = React.useState<string>(
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const [chatId, setChatId] = useState<string>("");
+  const [selectedModel, setSelectedModel] = useState<string>(
     getSelectedModel()
   );
-  const [open, setOpen] = React.useState(false);
-  const [ollama, setOllama] = useState<ChatOllama>();
-  const env = process.env.NODE_ENV;
-  const [loadingSubmit, setLoadingSubmit] = React.useState(false);
+  const [open, setOpen] = useState(false);
+  const [loadingSubmit, setLoadingSubmit] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+
   const base64Images = useChatStore((state) => state.base64Images);
   const setBase64Images = useChatStore((state) => state.setBase64Images);
+  const ws = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     if (messages.length < 1) {
-      // Generate a random id for the chat
-      console.log("Generating chat id");
       const id = uuidv4();
       setChatId(id);
     }
   }, [messages]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!isLoading && !error && chatId && messages.length > 0) {
-      // Save messages to local storage
       localStorage.setItem(`chat_${chatId}`, JSON.stringify(messages));
-      // Trigger the storage event to update the sidebar component
       window.dispatchEvent(new Event("storage"));
     }
-  }, [chatId, isLoading, error]);
+  }, [chatId, isLoading, error, messages]);
 
   useEffect(() => {
-    if (env === "production") {
-      const newOllama = new ChatOllama({
-        baseUrl: process.env.NEXT_PUBLIC_OLLAMA_URL || "http://localhost:11434",
-        model: selectedModel,
-      });
-      setOllama(newOllama);
-    }
+    // 初始化 WebSocket 连接
+    ws.current = new WebSocket("ws://localhost:8080/graphql");
+
+    ws.current.onopen = () => {
+      console.log("WebSocket connected");
+    };
+
+    ws.current.onerror = (error) => {
+      console.error("WebSocket error:", error);
+      toast.error("Connection error. Retrying...");
+    };
 
     if (!localStorage.getItem("ollama_user")) {
       setOpen(true);
     }
-  }, [selectedModel]);
 
-  const addMessage = (Message: Message) => {
-    messages.push(Message);
-    window.dispatchEvent(new Event("storage"));
-    setMessages([...messages]);
+    return () => {
+      if (ws.current) {
+        ws.current.close();
+      }
+    };
+  }, []);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
   };
 
-  // Function to handle chatting with Ollama in production (client side)
-  const handleSubmitProduction = async (
-    e: React.FormEvent<HTMLFormElement>
-  ) => {
-    e.preventDefault();
-
-    addMessage({ role: "user", content: input, id: chatId });
-    setInput("");
-
-    if (ollama) {
-      try {
-        const parser = new BytesOutputParser();
-
-        const stream = await ollama
-          .pipe(parser)
-          .stream(
-            (messages as Message[]).map((m) =>
-              m.role == "user"
-                ? new HumanMessage(m.content)
-                : new AIMessage(m.content)
-            )
-          );
-
-        const decoder = new TextDecoder();
-
-        let responseMessage = "";
-        for await (const chunk of stream) {
-          const decodedChunk = decoder.decode(chunk);
-          responseMessage += decodedChunk;
-          setLoadingSubmit(false);
-          setMessages([
-            ...messages,
-            { role: "assistant", content: responseMessage, id: chatId },
-          ]);
-        }
-        addMessage({ role: "assistant", content: responseMessage, id: chatId });
-        setMessages([...messages]);
-
-        localStorage.setItem(`chat_${chatId}`, JSON.stringify(messages));
-        // Trigger the storage event to update the sidebar component
-        window.dispatchEvent(new Event("storage"));
-      } catch (error) {
-        toast.error("An error occurred. Please try again.");
-        setLoadingSubmit(false);
-      }
+  const stop = () => {
+    // 实现停止生成的逻辑
+    if (ws.current) {
+      ws.current.send(
+        JSON.stringify({
+          type: "stop",
+          id: chatId,
+        })
+      );
     }
   };
 
-  const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (
+      !input.trim() ||
+      !ws.current ||
+      ws.current.readyState !== WebSocket.OPEN
+    ) {
+      return;
+    }
+
     setLoadingSubmit(true);
 
-    setMessages([...messages]);
-
-    const attachments: Attachment[] = base64Images
-    ? base64Images.map((image) => ({
-        contentType: 'image/base64', // Content type for base64 images
-        url: image, // The base64 image data
-      }))
-    : [];
-
-    // Prepare the options object with additional body data, to pass the model.
-    const requestOptions: ChatRequestOptions = {
-      options: {
-        body: {
-          selectedModel: selectedModel,
-        },
-      },
-      ...(base64Images && {
-        data: {
-          images: base64Images,
-        },
-        experimental_attachments: attachments
-      }),
+    const newMessage: Message = {
+      id: uuidv4(),
+      role: "user",
+      content: input,
+      createdAt: new Date().toISOString(),
     };
 
-    messages.slice(0, -1)
-    
+    setMessages((prev) => [...prev, newMessage]);
+    setInput("");
 
-    if (env === "production") {
-      handleSubmitProduction(e);
-      setBase64Images(null)
-    } else {
-      // Call the handleSubmit function with the options
-      handleSubmit(e, requestOptions);
-      setBase64Images(null)
+    const attachments = base64Images
+      ? base64Images.map((image) => ({
+          contentType: "image/base64",
+          url: image,
+        }))
+      : [];
+
+    // GraphQL subscription 请求
+    const subscriptionMsg = {
+      type: "start",
+      id: Date.now().toString(),
+      payload: {
+        query: `
+          subscription ChatStream($input: ChatInputType!) {
+            chatStream(input: $input) {
+              choices {
+                delta {
+                  content
+                }
+                finish_reason
+                index
+              }
+              created
+              id
+              model
+              object
+            }
+          }
+        `,
+        variables: {
+          input: {
+            message: input,
+            chatId,
+            model: selectedModel,
+            attachments,
+          },
+        },
+      },
+    };
+
+    try {
+      // 设置消息处理器
+      ws.current.onmessage = (event) => {
+        const response = JSON.parse(event.data);
+
+        if (response.type === "data" && response.payload.data) {
+          const chunk = response.payload.data.chatStream;
+          const content = chunk.choices[0]?.delta?.content;
+
+          if (content) {
+            setMessages((prev) => {
+              const lastMsg = prev[prev.length - 1];
+              if (lastMsg?.role === "assistant") {
+                return [
+                  ...prev.slice(0, -1),
+                  { ...lastMsg, content: lastMsg.content + content },
+                ];
+              } else {
+                return [
+                  ...prev,
+                  {
+                    id: chunk.id,
+                    role: "assistant",
+                    content,
+                    createdAt: new Date(chunk.created * 1000).toISOString(),
+                  },
+                ];
+              }
+            });
+          }
+
+          if (chunk.choices[0]?.finish_reason === "stop") {
+            setLoadingSubmit(false);
+            // 保存到本地存储
+            localStorage.setItem(`chat_${chatId}`, JSON.stringify(messages));
+            window.dispatchEvent(new Event("storage"));
+          }
+        }
+      };
+
+      // 发送订阅请求
+      ws.current.send(JSON.stringify(subscriptionMsg));
+      setBase64Images(null);
+    } catch (error) {
+      console.error("Error:", error);
+      toast.error("An error occurred. Please try again.");
+      setLoadingSubmit(false);
     }
   };
 
-  const onOpenChange = (isOpen: boolean) => { 
-    const username = localStorage.getItem("ollama_user")
-    if (username) return setOpen(isOpen)
+  const onOpenChange = (isOpen: boolean) => {
+    const username = localStorage.getItem("ollama_user");
+    if (username) return setOpen(isOpen);
 
-    localStorage.setItem("ollama_user", "Anonymous")
-    window.dispatchEvent(new Event("storage"))
-    setOpen(isOpen)
-  }
-  
+    localStorage.setItem("ollama_user", "Anonymous");
+    window.dispatchEvent(new Event("storage"));
+    setOpen(isOpen);
+  };
+
   return (
-    <main className="flex h-[calc(100dvh)] flex-col items-center ">
+    <main className="flex h-[calc(100dvh)] flex-col items-center">
       <Dialog open={open} onOpenChange={onOpenChange}>
         <ChatLayout
-          chatId=""
+          chatId={chatId}
           setSelectedModel={setSelectedModel}
           messages={messages}
           input={input}

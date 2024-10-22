@@ -4,7 +4,6 @@ import Link from "next/link";
 import { MoreHorizontal, SquarePen, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Message } from "ai/react";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import SidebarSkeleton from "./sidebar-skeleton";
@@ -28,6 +27,7 @@ import {
 } from "./ui/dropdown-menu";
 import { TrashIcon } from "@radix-ui/react-icons";
 import { useRouter } from "next/navigation";
+import { Message } from "./types";
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -45,7 +45,7 @@ export function Sidebar({
   isMobile,
   chatId,
   setMessages,
-  closeSidebar
+  closeSidebar,
 }: SidebarProps) {
   const [localChats, setLocalChats] = useState<
     { chatId: string; messages: Message[] }[]
