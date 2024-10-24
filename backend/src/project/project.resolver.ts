@@ -20,7 +20,7 @@ export class ProjectsResolver {
 
   @Query(() => [Project])
   async getUserProjects(
-    @GetUserIdFromToken() userId: string,
+    @GetUserIdFromToken() userId: number,
   ): Promise<Project[]> {
     return this.projectsService.getProjectsByUser(userId);
   }
@@ -36,7 +36,7 @@ export class ProjectsResolver {
 
   @Mutation(() => Project)
   async upsertProject(
-    @GetUserIdFromToken() userId: string,
+    @GetUserIdFromToken() userId: number,
     @Args('upsertProjectInput') upsertProjectInput: UpsertProjectInput,
   ): Promise<Project> {
     return this.projectsService.upsertProject(upsertProjectInput, userId);

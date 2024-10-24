@@ -42,14 +42,14 @@ input LoginUserInput {
 }
 
 type Menu {
-  created_at: Date!
+  createdAt: Date!
   id: ID!
-  is_active: Boolean!
-  is_deleted: Boolean!
-  last_updated: Date!
+  isActive: Boolean!
+  isDeleted: Boolean!
   name: String!
   path: String!
   permission: String!
+  updatedAt: Date!
 }
 
 type Mutation {
@@ -58,35 +58,35 @@ type Mutation {
   registerUser(input: RegisterUserInput!): User!
   removePackageFromProject(packageId: String!, projectId: String!): Boolean!
   updateProjectPath(newPath: String!, projectId: String!): Boolean!
-  upsertProject(upsertProjectInput: UpsertProjectInput!): Projects!
+  upsertProject(upsertProjectInput: UpsertProjectInput!): Project!
+}
+
+type Project {
+  createdAt: Date!
+  id: ID!
+  isActive: Boolean!
+  isDeleted: Boolean!
+  path: String
+  projectName: String!
+  projectPackages: [ProjectPackages!]
+  updatedAt: Date!
+  userId: ID!
 }
 
 type ProjectPackages {
   content: String!
-  created_at: Date!
+  createdAt: Date!
   id: ID!
-  is_active: Boolean!
-  is_deleted: Boolean!
-  last_updated: Date!
+  isActive: Boolean!
+  isDeleted: Boolean!
   project_id: ID!
-}
-
-type Projects {
-  created_at: Date!
-  id: ID!
-  is_active: Boolean!
-  is_deleted: Boolean!
-  last_updated: Date!
-  path: String!
-  projectPackages: [ProjectPackages!]
-  project_name: String!
-  user_id: ID!
+  updatedAt: Date!
 }
 
 type Query {
   checkToken(input: CheckTokenInput!): Boolean!
-  getProjectDetails(projectId: String!): Projects!
-  getUserProjects: [Projects!]!
+  getProjectDetails(projectId: String!): Project!
+  getUserProjects: [Project!]!
   logout: Boolean!
 }
 
@@ -101,17 +101,17 @@ type Subscription {
 }
 
 input UpsertProjectInput {
-  project_id: ID
-  project_name: String!
-  project_packages: [String!]
+  projectId: ID
+  projectName: String!
+  projectPackages: [String!]
 }
 
 type User {
-  created_at: Date!
+  createdAt: Date!
   email: String!
   id: ID!
-  is_active: Boolean!
-  is_deleted: Boolean!
-  last_updated: Date!
+  isActive: Boolean!
+  isDeleted: Boolean!
+  updatedAt: Date!
   username: String!
 }

@@ -19,7 +19,7 @@ export class ProjectService {
     private projectPackagesRepository: Repository<ProjectPackages>,
   ) {}
 
-  async getProjectsByUser(userId: string): Promise<Project[]> {
+  async getProjectsByUser(userId: number): Promise<Project[]> {
     const projects = await this.projectsRepository.find({
       where: { userId: userId, isDeleted: false },
       relations: ['projectPackages'],
@@ -57,7 +57,7 @@ export class ProjectService {
 
   async upsertProject(
     upsertProjectInput: UpsertProjectInput,
-    user_id: string,
+    user_id: number,
   ): Promise<Project> {
     const { projectId, projectName, path, projectPackages } =
       upsertProjectInput;
